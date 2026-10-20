@@ -1,0 +1,350 @@
+
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>高師大冒險物語</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;overflow:hidden;font-family:Arial,"Noto Sans TC",sans-serif;background:#b9d8ed}
+#hud{position:fixed;top:14px;left:14px;z-index:2;color:white;
+background:#163b35dd;padding:13px 17px;border-radius:14px;
+box-shadow:0 4px 16px #0003;pointer-events:none}
+#hud h2{font-size:18px;margin:0 0 8px}
+#hud p{font-size:13px;margin:5px 0}
+#message{position:fixed;bottom:100px;left:50%;transform:translateX(-50%);
+background:#173e35eF;color:white;padding:12px 18px;border-radius:12px;
+font-size:14px;text-align:center;max-width:88%;z-index:3}
+#controls{position:fixed;bottom:20px;left:20px;z-index:4;
+display:grid;grid-template-columns:54px 54px 54px;grid-template-rows:54px 54px;
+gap:5px;touch-action:none}
+.control{border:1px solid #ffffff99;border-radius:15px;background:#183e35bb;
+color:white;font-size:23px;display:flex;align-items:center;justify-content:center;
+user-select:none;-webkit-user-select:none;touch-action:none}
+#up{grid-column:2}#left{grid-column:1;grid-row:2}
+#down{grid-column:2;grid-row:2}#right{grid-column:3;grid-row:2}
+#interact{position:fixed;bottom:30px;right:20px;z-index:4;border:0;
+border-radius:50%;width:76px;height:76px;background:#e8c56b;color:#263b2d;
+font-size:15px;font-weight:bold;touch-action:none}
+#hint{position:fixed;top:14px;right:14px;color:white;background:#173e35bb;
+padding:10px;border-radius:10px;font-size:12px;max-width:150px}
+</style>
+</head>
+<body>
+<div id="hud">
+  <h2>🎓 高師大冒險物語</h2>
+  <p id="mission">任務：探索和平校區</p>
+  <p id="count">校園徽章：0 / 5</p>
+</div>
+<div id="hint">電腦：WASD / 方向鍵移動<br>靠近人物後按 E 互動</div>
+<div id="message">歡迎來到高師大！探索校園，尋找 5 枚徽章。</div>
+<div id="controls">
+  <div class="control" id="up" data-key="w">▲</div>
+  <div class="control" id="left" data-key="a">◀</div>
+  <div class="control" id="down" data-key="s">▼</div>
+  <div class="control" id="right" data-key="d">▶</div>
+</div>
+<button id="interact">互動 E</button>
+
+<script type="module">
+import * as THREE from
+'https://cdn.jsdelivr.net/npm/three@0.166.1/build/three.module.js';
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xa9d2ed);
+scene.fog = new THREE.Fog(0xa9d2ed, 65, 180);
+
+const camera = new THREE.PerspectiveCamera(
+  65, innerWidth / innerHeight, 0.1, 300
+);
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth,innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+document.body.appendChild(renderer.domElement);
+
+scene.add(new THREE.HemisphereLight(0xe4f3ff,0x697754,2));
+const sun = new THREE.DirectionalLight(0xfff0d5,2.5);
+sun.position.set(-30,50,25);
+sun.castShadow = true;
+sun.shadow.mapSize.set(1024,1024);
+sun.shadow.camera.left=-55;
+sun.shadow.camera.right=55;
+sun.shadow.camera.top=55;
+sun.shadow.camera.bottom=-55;
+scene.add(sun);
+
+function material(color,roughness=0.9){
+  return new THREE.MeshStandardMaterial({color,roughness});
+}
+const grassMat=material(0x719765);
+const roadMat=material(0x777e80);
+const pathMat=material(0xc8c3b5);
+const wallMat=material(0xd6cfbd);
+const whiteMat=material(0xe8e2d5);
+const glassMat=new THREE.MeshStandardMaterial({
+  color:0x83b7cb,roughness:0.35,metalness:0.1
+});
+
+function block(w,h,d,x,y,z,mat,shadows=true){
+  const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);
+  mesh.position.set(x,y+h/2,z);
+  mesh.castShadow=shadows;
+  mesh.receiveShadow=true;
+  scene.add(mesh);
+  return mesh;
+}
+
+// 校園地面與道路
+block(220,0.2,220,0,-0.2,0,grassMat);
+block(12,0.04,190,0,0,-8,roadMat,false);
+block(190,0.04,9,0,0,0,pathMat,false);
+block(4,0.06,190,-9,0.02,-8,pathMat,false);
+block(4,0.06,190,9,0.02,-8,pathMat,false);
+
+// 道路分隔線
+for(let z=-95;z<95;z+=8)
+  block(0.15,0.025,3,0,0.04,z,whiteMat,false);
+
+// 教學大樓：幾棟不同尺寸的建築
+function building(x,z,w,d,h,name){
+  block(w,h,d,x,h*0.0,z,wallMat);
+  // 屋頂邊緣
+  block(w+0.5,0.35,d+0.5,x,h,z,material(0x888c85));
+  // 窗戶排列
+  const floors=Math.max(2,Math.floor(h/3));
+  const cols=Math.max(3,Math.floor(w/2.8));
+  for(let f=0;f<floors;f++){
+    for(let c=0;c<cols;c++){
+      const wx=x-w/2+(c+0.5)*w/cols;
+      const wz=z-d/2-0.035;
+      const win=new THREE.Mesh(
+        new THREE.BoxGeometry(w/cols*0.55,1.05,0.08),glassMat);
+      win.position.set(wx,1.3+f*(h-1)/floors,wz);
+      scene.add(win);
+    }
+  }
+  block(Math.min(3,w*0.18),2.4,0.2,x,0,z-d/2-0.12,whiteMat);
+  const sign=block(Math.min(w-1,8),0.6,0.12,x,h*0.55,z-d/2-0.15,
+    material(0x496b55),false);
+  return name;
+}
+building(-22,-22,18,13,12,"教學大樓");
+building(23,-25,20,14,16,"圖書館");
+building(-24,20,17,13,9,"行政大樓");
+building(24,20,19,15,11,"藝術教室");
+building(0,-58,30,14,13,"學生活動中心");
+
+// 樹木
+function tree(x,z,s=1){
+  const trunk=new THREE.Mesh(
+    new THREE.CylinderGeometry(0.22*s,0.34*s,2.7*s,7),
+    material(0x76523a));
+  trunk.position.set(x,1.35*s,z);
+  trunk.castShadow=true;
+  scene.add(trunk);
+  const leaves=new THREE.Mesh(
+    new THREE.SphereGeometry(1.35*s,9,7),
+    material(0x477b4a));
+  leaves.position.set(x,3.2*s,z);
+  leaves.castShadow=true;
+  scene.add(leaves);
+  const leaves2=new THREE.Mesh(
+    new THREE.SphereGeometry(0.9*s,8,7),
+    material(0x5c8e52));
+  leaves2.position.set(x-0.55*s,3.45*s,z+0.15*s);
+  scene.add(leaves2);
+}
+for(let z=-82;z<82;z+=12){
+  tree(-13,z,0.9+(z%3+3)*0.04);
+  tree(13,z,1);
+}
+for(let x=-42;x<=42;x+=12){
+  if(Math.abs(x)>15){
+    tree(x,-3,1.1);
+    tree(x,36,0.9);
+  }
+}
+
+// 長椅
+for(const z of [-12,8,30]){
+  block(3,0.25,0.65,-6,0.5,z,material(0x896345));
+  block(0.15,0.5,0.15,-7,0,z,material(0x555b56));
+  block(0.15,0.5,0.15,-5,0,z,material(0x555b56));
+}
+
+// 玩家角色
+const player=new THREE.Group();
+const skin=material(0xe8b994);
+const shirt=material(0xf1eee3);
+const pants=material(0x354c61);
+const shoes=material(0x303333);
+
+function part(parent,geo,mat,x,y,z){
+  const m=new THREE.Mesh(geo,mat);
+  m.position.set(x,y,z);
+  m.castShadow=true;
+  parent.add(m);
+  return m;
+}
+part(player,new THREE.BoxGeometry(0.8,0.95,0.42),shirt,0,1.35,0);
+part(player,new THREE.SphereGeometry(0.34,16,12),skin,0,2.12,0);
+part(player,new THREE.BoxGeometry(0.84,0.18,0.45),
+  material(0x344f40),0,1.84,0);
+const legs=[];
+for(const x of [-0.23,0.23]){
+  const leg=part(player,new THREE.BoxGeometry(0.28,0.78,0.3),
+    pants,x,0.48,0);
+  legs.push(leg);
+  part(player,new THREE.BoxGeometry(0.3,0.16,0.42),
+    shoes,x,0.12,-0.04);
+}
+const arms=[];
+for(const x of [-0.53,0.53]){
+  const arm=part(player,new THREE.BoxGeometry(0.22,0.75,0.25),
+    shirt,x,1.38,0);
+  arms.push(arm);
+}
+player.position.set(0,0,12);
+scene.add(player);
+
+// NPC 導覽員
+const npc=new THREE.Group();
+part(npc,new THREE.BoxGeometry(0.7,1,0.4),material(0x547a9d),0,1.3,0);
+part(npc,new THREE.SphereGeometry(0.32,12,10),skin,0,2.05,0);
+npc.position.set(4,0,-4);
+scene.add(npc);
+
+// 收集徽章
+const badges=[];
+const badgeMat=new THREE.MeshStandardMaterial({
+  color:0xffd34e,metalness:0.55,roughness:0.25,
+  emissive:0x664000,emissiveIntensity:0.25
+});
+const spots=[[-5,-16],[17,-7],[-17,12],[7,29],[0,-48]];
+spots.forEach(([x,z])=>{
+  const b=new THREE.Mesh(new THREE.TorusGeometry(0.55,0.16,10,20),badgeMat);
+  b.position.set(x,1.5,z);
+  b.castShadow=true;
+  scene.add(b);
+  badges.push(b);
+});
+
+const keys={};
+let collected=0;
+let moving=false;
+let lastMessage=0;
+const message=document.querySelector('#message');
+const mission=document.querySelector('#mission');
+const count=document.querySelector('#count');
+
+function say(text){
+  message.textContent=text;
+  lastMessage=performance.now();
+}
+addEventListener('keydown',e=>{
+  const k=e.key.toLowerCase();
+  keys[k]=true;
+  if(['arrowup','arrowdown','arrowleft','arrowright',' '].includes(k))
+    e.preventDefault();
+  if(k==='e') interact();
+});
+addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+
+document.querySelectorAll('[data-key]').forEach(btn=>{
+  const k=btn.dataset.key;
+  btn.addEventListener('pointerdown',e=>{
+    e.preventDefault();keys[k]=true;btn.setPointerCapture(e.pointerId);
+  });
+  const release=e=>{keys[k]=false};
+  btn.addEventListener('pointerup',release);
+  btn.addEventListener('pointercancel',release);
+  btn.addEventListener('lostpointercapture',release);
+});
+document.querySelector('#interact').addEventListener('pointerdown',e=>{
+  e.preventDefault();interact();
+});
+
+function interact(){
+  if(player.position.distanceTo(npc.position)<4){
+    say('導覽員：歡迎來到高師大和平校區！找到校園徽章，完成你的冒險吧！');
+  }else{
+    say('探索校園，尋找金色徽章，靠近導覽員按「互動 E」。');
+  }
+}
+
+const clock=new THREE.Clock();
+const cameraTarget=new THREE.Vector3();
+const desiredCamera=new THREE.Vector3();
+let walkTime=0;
+
+function animate(){
+  requestAnimationFrame(animate);
+  const dt=Math.min(clock.getDelta(),0.04);
+  const forward=(keys['w']||keys['arrowup']?1:0)
+               -(keys['s']||keys['arrowdown']?1:0);
+  const side=(keys['d']||keys['arrowright']?1:0)
+            -(keys['a']||keys['arrowleft']?1:0);
+  moving=forward!==0||side!==0;
+
+  if(moving){
+    const v=new THREE.Vector3(side,0,-forward).normalize();
+    player.position.addScaledVector(v,dt*7);
+    player.rotation.y=Math.atan2(-v.x,-v.z);
+    walkTime+=dt*10;
+    legs[0].rotation.x=Math.sin(walkTime)*0.55;
+    legs[1].rotation.x=-Math.sin(walkTime)*0.55;
+    arms[0].rotation.x=-Math.sin(walkTime)*0.35;
+    arms[1].rotation.x=Math.sin(walkTime)*0.35;
+  }else{
+    legs.forEach(l=>l.rotation.x=THREE.MathUtils.damp(l.rotation.x,0,8,dt));
+    arms.forEach(a=>a.rotation.x=THREE.MathUtils.damp(a.rotation.x,0,8,dt));
+  }
+
+  // 暫時限制在校園遊戲範圍內
+  player.position.x=THREE.MathUtils.clamp(player.position.x,-85,85);
+  player.position.z=THREE.MathUtils.clamp(player.position.z,-90,85);
+
+  badges.forEach((b,i)=>{
+    if(!b.visible)return;
+    b.rotation.y+=dt*1.4;
+    b.position.y=1.5+Math.sin(performance.now()*0.002+i)*0.15;
+    if(player.position.distanceTo(b.position)<1.7){
+      b.visible=false;
+      collected++;
+      count.textContent=`校園徽章：${collected} / 5`;
+      mission.textContent=collected===5?'任務：探索完成！':'任務：收集校園徽章';
+      say(collected===5?'恭喜！你已收集全部 5 枚徽章！':'找到一枚校園徽章！繼續探索吧！');
+    }
+  });
+
+  // 第三人稱跟隨鏡頭
+  cameraTarget.set(player.position.x,1.4,player.position.z);
+  desiredCamera.set(
+    player.position.x+Math.sin(player.rotation.y)*8,
+    6.2,
+    player.position.z+Math.cos(player.rotation.y)*8
+  );
+  camera.position.lerp(desiredCamera,1-Math.exp(-4*dt));
+  camera.lookAt(cameraTarget);
+
+  if(performance.now()-lastMessage>5000)
+    message.textContent='探索校園，靠近金色徽章即可收集。';
+  renderer.render(scene,camera);
+}
+animate();
+
+addEventListener('resize',()=>{
+  camera.aspect=innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+  renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
+});
+</script>
+</body>
+</html>
